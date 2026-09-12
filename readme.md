@@ -1,154 +1,91 @@
 # RouteCore
 
-RouteCore is a Python project for modelling a road network and calculating routes between locations.
+RouteCore is a Python command-line application for managing a small road network and calculating the shortest available route between locations.
 
-The project is being developed with a strong focus on software architecture, separation of responsibilities, data validation and graph algorithms.
+The project is built with a layered architecture that separates domain models, persistence, business logic, routing algorithms, and the CLI.
 
-## Current Features
+## Features
 
-- Location management
-- Road management
-- Bidirectional roads
-- Road status management (`OPEN` / `CLOSED`)
-- Duplicate location and road prevention
-- JSON persistence
-- Automatic storage file creation
-- Atomic JSON writes using temporary files
-- In-memory rollback when persistence fails
-- Graph generation from the current road network
-- Closed roads automatically excluded from the generated graph
+- Add locations
+- Create bidirectional roads between locations
+- Set roads as `OPEN` or `CLOSED`
+- Change the status of an existing road
+- View all locations
+- View all roads with distance and status
+- Calculate the shortest route between two locations
+- Automatically ignore closed roads during route calculation
+- Detect unreachable destinations
+- Persist network data in JSON
+- Restore saved data when the application starts
+- Prevent duplicate locations
+- Prevent duplicate roads, including reversed duplicates
+- Validate location, road, distance, and status data
 
-## Planned Features
+## Shortest Path
 
-- Dijkstra shortest path algorithm
-- Route calculation between two locations
-- Delivery management
-- Vehicle capacity management
-- Multi-stop routes
-- Command-line interface
-- Automated tests
+RouteCore uses Dijkstra's algorithm to calculate the shortest available route between two locations.
 
-## Project Structure
+Only roads with status:
 
 ```text
-routecore/
-├── algorithms/
-│   └── dijkstra.py
-│
-├── models/
-│   ├── location.py
-│   ├── road.py
-│   ├── vehicle.py
-│   └── delivery.py
-│
-├── repositories/
-│   ├── network_repository.py
-│   ├── vehicle_repository.py
-│   └── delivery_repository.py
-│
-├── services/
-│   ├── network_service.py
-│   ├── route_service.py
-│   └── delivery_service.py
-│
-├── cli/
-│   ├── main_menu.py
-│   ├── network_menu.py
-│   ├── route_menu.py
-│   └── delivery_menu.py
-│
-├── data/
-│   ├── network.json
-│   ├── vehicles.json
-│   └── deliveries.json
-│
-├── main.py
-└── README.md
+OPEN
 ```
 
-> Some modules shown above are part of the planned architecture and may not yet be implemented.
+are included in the graph used by the algorithm.
 
-## Architecture
+Example network:
 
-RouteCore separates responsibilities into different layers.
+```text
+ROM ----90---- FRO
+ |              |
+300             80
+ |              |
+ +----- NAP ----+
+```
 
-### Models
+Calculating:
 
-Models represent domain entities and enforce their own internal validity.
+```text
+ROM -> NAP
+```
 
-Examples:
+returns:
 
-- `Location`
-- `Road`
-- `Vehicle`
-- `Delivery`
+```text
+ROM -> FRO -> NAP
+Total distance: 170
+```
 
-A `Road`, for example, validates its origin, destination, distance and status.
+instead of the direct road with distance `300`.
 
-Models do not know how data is stored and do not contain CLI logic.
+If no valid route exists, the application reports:
 
-### Repositories
+```text
+No route available.
+```
 
-Repositories are responsible for persistence.
+## Road Status
 
-`NetworkRepository` currently handles:
+Roads can have one of two statuses:
 
-- loading locations and roads from JSON;
-- converting JSON data into domain objects;
-- converting domain objects back into JSON;
-- automatically creating the storage directory;
-- automatically creating the initial network file;
-- atomic writes using a temporary file;
-- cleaning temporary files when persistence fails.
+```text
+OPEN
+CLOSED
+```
 
-Repositories do not contain routing or application business logic.
+Closed roads remain stored in the network but are excluded when building the graph used by Dijkstra's algorithm.
 
-### Services
+Changing a road from `CLOSED` back to `OPEN` makes it immediately available for route calculation again.
 
-Services contain application and business logic.
+## Data Persistence
 
-`NetworkService` currently handles:
-
-- retrieving a location by code;
-- retrieving a road;
-- bidirectional road lookup;
-- adding locations;
-- adding roads;
-- preventing duplicate locations;
-- preventing duplicate roads;
-- checking that road endpoints exist;
-- opening roads;
-- closing roads;
-- generating the graph used by routing algorithms;
-- excluding closed roads from routing;
-- rolling back in-memory changes when persistence fails.
-
-The service does not know how JSON files are written internally.
-
-### Algorithms
-
-Algorithms are isolated from persistence and application logic.
-
-The planned `dijkstra.py` module will receive a graph, a starting node and a destination node and calculate the shortest available route.
-
-The algorithm will not know about:
-
-- JSON files;
-- repositories;
-- services;
-- `Location` objects;
-- `Road` objects;
-- CLI input/output.
-
-It will work only with the graph representation provided to it.
-
-## Network Data Format
-
-The network is persisted in:
+Network data is stored in:
 
 ```text
 data/network.json
 ```
+
+The file contains locations and roads.
 
 Example:
 
@@ -156,16 +93,12 @@ Example:
 {
     "locations": [
         {
-            "name": "Roma",
+            "name": "Rome",
             "code": "ROM"
         },
         {
             "name": "Frosinone",
             "code": "FRO"
-        },
-        {
-            "name": "Cassino",
-            "code": "CAS"
         }
     ],
     "roads": [
@@ -174,574 +107,349 @@ Example:
             "destination": "FRO",
             "distance": 90,
             "status": "OPEN"
-        },
-        {
-            "origin": "FRO",
-            "destination": "CAS",
-            "distance": 50,
-            "status": "OPEN"
         }
     ]
 }
 ```
 
-## Automatic Storage Initialization
+Changes are automatically saved.
 
-When `NetworkRepository` is created, it verifies that the storage directory exists.
+The repository writes the updated data to a temporary file before replacing the existing network file, reducing the risk of corrupting the current data during a save operation.
 
-If necessary, the directory is created automatically.
-
-For example:
-
-```python
-repository = NetworkRepository("./data/network.json")
-```
-
-If `data/` does not exist, it is created.
-
-If `network.json` does not exist, RouteCore creates it with the following initial structure:
-
-```json
-{
-    "locations": [],
-    "roads": []
-}
-```
-
-Existing network files are not overwritten during initialization.
-
-## Locations
-
-A location represents a node in the road network.
-
-Example:
-
-```python
-Location(
-    code="ROM",
-    name="Roma"
-)
-```
-
-Location codes are normalized before being stored.
-
-For example:
+## Project Structure
 
 ```text
-" rom "
+routecore/
+├── algorithms/
+│   └── dijkstra.py
+│
+├── cli/
+│   └── main_menu.py
+│
+├── data/
+│   └── network.json
+│
+├── models/
+│   ├── location.py
+│   └── road.py
+│
+├── repositories/
+│   └── network_repository.py
+│
+├── services/
+│   ├── network_service.py
+│   └── route_service.py
+│
+├── main.py
+└── README.md
 ```
 
-becomes:
+## Architecture
+
+The application follows a layered structure:
 
 ```text
-"ROM"
+CLI
+ ↓
+Services
+ ↓
+Algorithms / Repositories
+ ↓
+Models / JSON data
 ```
 
-A location validates that:
+### Models
 
-- `code` is a string;
-- `code` is not empty;
-- `name` is a string;
-- `name` is not empty.
+Domain entities and their validation rules.
 
-## Roads
+#### `Location`
 
-A road represents a connection between two locations.
+Represents a location in the network.
 
-Example:
-
-```python
-Road(
-    origin="ROM",
-    destination="FRO",
-    distance=90,
-    status="OPEN"
-)
-```
-
-Roads are bidirectional.
-
-This means:
+Main data:
 
 ```text
-ROM → FRO
+code
+name
 ```
 
-also represents:
+Location codes are normalized to uppercase.
+
+#### `Road`
+
+Represents a bidirectional connection between two locations.
+
+Main data:
 
 ```text
-FRO → ROM
+origin
+destination
+distance
+status
 ```
-
-A road validates that:
-
-- `origin` is a valid non-empty string;
-- `destination` is a valid non-empty string;
-- origin and destination are different;
-- distance is an integer or float;
-- distance is greater than zero;
-- status is either `OPEN` or `CLOSED`.
-
-Road codes and status values are normalized before being stored.
-
-## Road Status
-
-Roads can have two states:
-
-```text
-OPEN
-CLOSED
-```
-
-An open road can be used by the routing system.
-
-A closed road still exists in the domain and in the JSON file, but it is excluded from the routing graph.
-
-Example:
-
-```text
-A --4-- B   OPEN
-B --3-- C   CLOSED
-```
-
-The generated graph will include:
-
-```text
-A ↔ B
-```
-
-but not:
-
-```text
-B ↔ C
-```
-
-Attempting to open an already open road raises an error.
-
-Attempting to close an already closed road also raises an error.
-
-## Graph Representation
-
-The road network is converted into a weighted adjacency list before being passed to routing algorithms.
-
-Example:
-
-```python
-{
-    "ROM": {
-        "FRO": 90
-    },
-    "FRO": {
-        "ROM": 90,
-        "CAS": 50
-    },
-    "CAS": {
-        "FRO": 50
-    }
-}
-```
-
-The outer dictionary represents locations.
-
-Each inner dictionary represents directly reachable neighbouring locations.
-
-The value associated with each neighbour represents the road distance.
-
-For example:
-
-```python
-graph["FRO"]["CAS"]
-```
-
-returns:
-
-```text
-50
-```
-
-## Bidirectional Graph Generation
-
-Each open road is inserted in both directions.
 
 A road:
 
-```text
-ROM --90-- FRO
-```
+- cannot connect a location to itself
+- must have a positive distance
+- must have status `OPEN` or `CLOSED`
 
-produces:
+The model also manages its own status transitions through open and close operations.
+
+## Repository
+
+### `NetworkRepository`
+
+Responsible for JSON persistence.
+
+It:
+
+- creates the data directory when necessary
+- creates an empty network file if none exists
+- loads locations and roads from JSON
+- converts JSON data into domain objects
+- converts domain objects back into JSON
+- saves network changes
+
+File access is kept outside the services and CLI.
+
+## Services
+
+### `NetworkService`
+
+Manages the road network.
+
+Responsibilities include:
+
+- retrieving locations
+- retrieving roads
+- adding locations
+- adding roads
+- opening roads
+- closing roads
+- preventing duplicate locations
+- preventing duplicate bidirectional roads
+- validating that road endpoints exist
+- saving network changes
+- building the graph used for route calculation
+
+The graph contains all locations but only roads currently marked as `OPEN`.
+
+### `RouteService`
+
+Coordinates route calculation.
+
+It:
+
+1. validates the origin location
+2. validates the destination location
+3. requests the current graph from `NetworkService`
+4. calls Dijkstra's algorithm
+5. returns the calculated path and total distance
+
+The service returns:
 
 ```python
-graph["ROM"]["FRO"] = 90
-graph["FRO"]["ROM"] = 90
+tuple[list[str], int | float] | None
 ```
-
-This allows routing algorithms to traverse the road in either direction.
-
-## Isolated Locations
-
-Locations are always represented in the graph even if they currently have no available roads.
 
 Example:
 
 ```python
-{
-    "ROM": {},
-    "FRO": {}
-}
+(["ROM", "FRO", "NAP"], 170.0)
 ```
 
-This is important because a location may exist in the network while temporarily being unreachable.
-
-## Closed Roads
-
-Closed roads are not included in the generated routing graph.
-
-For example:
-
-```text
-Locations:
-A
-B
-C
-
-Roads:
-A --4-- B   OPEN
-B --3-- C   CLOSED
-```
-
-produces:
+If the destination cannot be reached:
 
 ```python
-{
-    "A": {
-        "B": 4
-    },
-    "B": {
-        "A": 4
-    },
-    "C": {}
-}
+None
 ```
 
-The road between `B` and `C` remains stored in the network but is unavailable to routing algorithms.
+## Dijkstra Algorithm
 
-## Persistence
-
-`NetworkRepository` converts between JSON data and domain objects.
-
-Loading:
+The routing algorithm is implemented separately in:
 
 ```text
-network.json
-    ↓
-json.load()
-    ↓
-raw dictionaries
-    ↓
-Location / Road objects
+algorithms/dijkstra.py
 ```
 
-Saving performs the reverse transformation:
+It receives:
 
-```text
-Location / Road objects
-    ↓
-Python dictionaries
-    ↓
-JSON
+```python
+graph
+origin
+destination
 ```
 
-## Atomic File Writes
+and returns the shortest route and its total cost.
 
-RouteCore avoids directly overwriting the existing network file during normal persistence.
+Example:
 
-Instead, the repository first writes the complete new state to:
-
-```text
-network.json.tmp
+```python
+(["ROM", "FRO", "NAP"], 170.0)
 ```
 
-Only after the temporary file has been written successfully does RouteCore replace:
+The algorithm keeps track of:
+
+- the lowest known cost for every node
+- the previous node in the best known path
+- nodes that still need to be explored
+
+The final route is reconstructed by following the previous nodes from the destination back to the origin.
+
+## CLI
+
+The command-line interface currently provides:
 
 ```text
-network.json
+1. Calculate Route
+
+2. Add Location
+3. Create Road
+
+4. Change Road Status
+
+5. View Locations
+6. View Roads
+
+7. Exit
 ```
 
-with the temporary file.
+### Calculate Route
 
-Conceptually:
+Example:
 
 ```text
-current network.json
-        ↓
+Origin location code: rom
+Destination location code: nap
 
-write new data
-        ↓
-network.json.tmp
-        ↓
-write successful?
-        ↓
-       yes
-        ↓
-replace network.json atomically
+Shortest route from rom to nap:
+ROM -> FRO -> NAP
+Total distance: 170.0
 ```
 
-If writing the temporary file fails:
+### View Locations
+
+Example:
 
 ```text
-network.json
+CODE  NAME
+ROM   Rome
+FRO   Frosinone
+NAP   Naples
 ```
 
-remains untouched.
+### View Roads
 
-The temporary file is removed and the original exception is propagated.
-
-## In-Memory Rollback
-
-Application services modify objects in memory before persistence.
-
-If persistence fails, RouteCore restores the previous in-memory state.
-
-For example, when adding a road:
+Example:
 
 ```text
-append Road
-↓
-attempt save
-↓
-save fails
-↓
-remove Road from memory
-↓
-re-raise original exception
+ORIGIN  DESTINATION  DISTANCE  STATUS
+ROM     FRO          90.0      OPEN
+FRO     NAP          80.0      OPEN
+ROM     NAP          300.0     OPEN
 ```
 
-When opening a road:
+## Validation
+
+RouteCore currently validates several invalid states.
+
+Examples include:
+
+### Duplicate location
 
 ```text
-CLOSED
-↓
-open()
-↓
+Location already exists.
+```
+
+Location codes are normalized, so:
+
+```text
+rom
+ROM
+```
+
+refer to the same location.
+
+### Duplicate road
+
+Because roads are bidirectional, if this road exists:
+
+```text
+ROM -> FRO
+```
+
+trying to create:
+
+```text
+FRO -> ROM
+```
+
+is rejected.
+
+```text
+Road already exists.
+```
+
+### Missing location
+
+A road cannot be created if one of its endpoints does not exist.
+
+Example:
+
+```text
+Destination does not exist.
+```
+
+### Invalid distance
+
+Road distances must be greater than zero.
+
+```text
+Distance must be positive.
+```
+
+### Invalid status
+
+Only these values are accepted:
+
+```text
 OPEN
-↓
-attempt save
-↓
-save fails
-↓
-close()
-↓
 CLOSED
 ```
 
-This prevents the in-memory network from disagreeing with the persisted network after a failed save operation.
+## Running the Project
 
-## Dependency Injection
-
-Repositories are created outside the services and passed to them.
-
-Example:
-
-```python
-repository = NetworkRepository("./data/network.json")
-
-network_service = NetworkService(repository)
-```
-
-`NetworkService` does not create its own repository and does not know the path of the JSON file.
-
-This keeps configuration separate from business logic.
-
-Conceptually:
+Requirements:
 
 ```text
-main.py
-  ↓
-creates NetworkRepository
-  ↓
-passes repository to NetworkService
+Python 3.10+
 ```
 
-The same repository instance already knows its storage path.
+No external Python packages are currently required.
 
-## Separation of Responsibilities
+Run the application from the project root:
 
-RouteCore follows a layered structure.
+```bash
+python main.py
+```
+
+## Entry Point
+
+`main.py` creates and connects the application dependencies:
 
 ```text
-Model
-→ represents domain data
-
-Repository
-→ reads and writes persistent data
-
-Service
-→ applies application and business rules
-
-Algorithm
-→ performs graph computation
-
+NetworkRepository
+        ↓
+NetworkService
+        ↓
+RouteService
+        ↓
 CLI
-→ handles user input and output
-
-main.py
-→ creates and connects dependencies
 ```
 
-Examples:
+This keeps object creation centralized and avoids coupling services directly to the application's entry point.
 
-```text
-"Distance must be greater than zero"
-→ Road
+## Current Status
 
-"Does ROM exist in the network?"
-→ NetworkService
-
-"Save network.json"
-→ NetworkRepository
-
-"Ignore CLOSED roads when building the routing graph"
-→ NetworkService
-
-"Find the shortest path"
-→ algorithms/dijkstra.py
-
-"Print the route to the terminal"
-→ CLI
-```
-
-## Error Handling
-
-RouteCore distinguishes between invalid types and invalid values.
-
-Examples:
-
-```text
-123 instead of a string
-→ TypeError
-```
-
-```text
-"" as a location code
-→ ValueError
-```
-
-Persistence exceptions are not silently hidden.
-
-When a repository operation fails, the original exception is propagated after cleanup and rollback.
-
-## Technologies and Concepts
-
-- Python 3
-- JSON
-- `pathlib`
-- Object-Oriented Programming
-- Type hints
-- Exception handling
-- Dependency injection
-- Repository pattern
-- Service layer
-- Encapsulation
-- Atomic file writes
-- In-memory rollback
-- Weighted graphs
-- Adjacency lists
-- Graph algorithms
-
-No external Python dependencies are currently required.
-
-## Current Development Status
-
-Implemented:
-
-- `Location`
-- `Road`
-- `NetworkRepository`
-- `NetworkService`
-- JSON persistence
-- automatic storage initialization
-- atomic saves
-- rollback logic
-- road opening and closing
-- duplicate prevention
-- graph generation
-
-In development:
-
-- Dijkstra shortest-path algorithm
-
-Planned:
-
-- `RouteService`
-- delivery management
-- vehicle management
-- vehicle capacity validation
-- multi-stop routes
-- CLI
-- automated tests
-
-## Next Milestone
-
-The next major milestone is the implementation of Dijkstra's shortest-path algorithm.
-
-The algorithm will operate on a graph such as:
-
-```python
-{
-    "A": {
-        "B": 4,
-        "C": 8
-    },
-    "B": {
-        "A": 4,
-        "C": 3,
-        "D": 7
-    },
-    "C": {
-        "A": 8,
-        "B": 3,
-        "D": 2
-    },
-    "D": {
-        "B": 7,
-        "C": 2
-    }
-}
-```
-
-For example:
-
-```text
-Start: A
-Destination: D
-```
-
-the routing system should eventually determine:
-
-```text
-A → B → C → D
-```
-
-with total distance:
-
-```text
-9
-```
-
-## Project Goal
-
-RouteCore is primarily a learning project designed to strengthen:
-
-- Python programming;
-- software architecture;
-- problem decomposition;
-- object-oriented design;
-- data structures;
-- graph theory;
-- algorithms;
-- persistence;
-- error handling;
-- backend development fundamentals.
-
-The goal is not only to make the application work, but to understand why each responsibility belongs where it does and how the different layers interact.
+The current version implements the complete basic location, road-network, persistence, CLI, and shortest-route workflow.

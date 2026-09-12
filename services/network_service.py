@@ -43,6 +43,9 @@ class NetworkService:
                 return location
             
         raise ValueError("No Location with this code.")
+    
+    def get_locations(self) -> list[Location]:
+        return self.locations.copy()
         
     def get_road(self, origin: str, destination: str) -> Road:
         origin = self._normalize_code(origin, 'Origin')
@@ -57,6 +60,9 @@ class NetworkService:
                 return road
         
         raise ValueError(f"No Road with Origin: {origin} and Destination: {destination}.")
+    
+    def get_roads(self) -> list[Road]:
+        return self.roads.copy()
     
     
     def add_location(self, code: str, name: str) -> Location:
